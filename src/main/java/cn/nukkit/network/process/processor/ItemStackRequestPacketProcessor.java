@@ -12,6 +12,7 @@ import cn.nukkit.network.protocol.ItemStackRequestPacket;
 import cn.nukkit.network.protocol.ItemStackResponsePacket;
 import cn.nukkit.network.protocol.ProtocolInfo;
 import cn.nukkit.network.protocol.types.itemstack.ContainerSlotType;
+import cn.nukkit.network.protocol.types.itemstack.request.ItemStackRequest;
 import cn.nukkit.network.protocol.types.itemstack.request.action.ItemStackRequestAction;
 import cn.nukkit.network.protocol.types.itemstack.request.action.ItemStackRequestActionType;
 import cn.nukkit.network.protocol.types.itemstack.response.ItemStackResponse;
@@ -25,7 +26,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemStackRequestPacket> {
@@ -52,56 +52,61 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
     public void handle(@NotNull PlayerHandle playerHandle, @NotNull ItemStackRequestPacket pk) {
         Player player = playerHandle.player;
         List<ItemStackResponse> responses = new ArrayList<>();
-        for (var request : pk.getRequests()) {
-            ItemStackRequestAction[] actions = request.getActions();
-            ItemStackRequestContext context = new ItemStackRequestContext(request);
+        for (ItemStackRequest request : pk.getRequests()) {
             ItemStackResponse itemStackResponse = new ItemStackResponse(ItemStackResponseStatus.OK, request.getRequestId(), new ArrayList<>());
             Map<ContainerSlotType, ItemStackResponseContainer> responseContainerMap = new LinkedHashMap<>();
-            for (int index = 0; index < actions.length; index++) {
-                var action = actions[index];
-                context.setCurrentActionIndex(index);
-                ItemStackRequestActionProcessor<ItemStackRequestAction> processor = (ItemStackRequestActionProcessor<ItemStackRequestAction>) PROCESSORS.get(action.getType());
+            ItemStackRequestContext itemStackRequestContext = new ItemStackRequestContext(request);
+
+            ItemStackRequestAction[] itemStackRequestActions = request.getActions();
+            for (int index = 0; index < itemStackRequestActions.length; index++) {
+                itemStackRequestContext.setCurrentActionIndex(index);
+
+                ItemStackRequestAction itemStackRequestAction = itemStackRequestActions[index];
+                ItemStackRequestActionProcessor<ItemStackRequestAction> processor = (ItemStackRequestActionProcessor<ItemStackRequestAction>) PROCESSORS.get(itemStackRequestAction.getType());
                 if (processor == null) {
-                    log.warn("Unhandled inventory action type " + action.getType());
+                    log.warn("Unhandled inventory itemStackRequestAction type " + itemStackRequestAction.getType());
+
                     continue;
                 }
 
-                ItemStackRequestActionEvent event = new ItemStackRequestActionEvent(player, action, context);
+                ItemStackRequestActionEvent event = new ItemStackRequestActionEvent(player, itemStackRequestAction, itemStackRequestContext);
                 Server.getInstance().getPluginManager().callEvent(event);
-                Optional<Inventory> topWindow = player.getTopWindow();
-                if (topWindow.isPresent() && topWindow.get() instanceof FakeInventory fakeInventory) {
-                    fakeInventory.handle(event);
+
+                Inventory topWindow = player.getTopWindow().orElse(null);
+                if (topWindow instanceof FakeInventory) {
+                    ((FakeInventory) topWindow).handle(event);
                 }
-                ActionResponse response;
-                if (event.getResponse() != null) {
-                    response = event.getResponse();
-                } else if (event.isCancelled()) {
-                    response = context.error();
-                } else {
-                    response = processor.handle(action, player, context);
+
+                ActionResponse response = event.isCancelled() ? itemStackRequestContext.error() : event.getResponse();
+                if (response == null) {
+                    response = processor.handle(itemStackRequestAction, player, itemStackRequestContext);
                 }
-                if (response != null) {
-                    if (!response.ok()) {
-                        itemStackResponse.setResult(ItemStackResponseStatus.ERROR);
-                        itemStackResponse.getContainers().clear();
-                        responses.add(itemStackResponse);
-                        break;
-                    }
-                    for (var container : response.containers()) {
-                        responseContainerMap.compute(container.getContainer(), (key, oldValue) -> {
-                            if (oldValue == null) {
-                                return container;
-                            } else {
-                                oldValue.getItems().addAll(container.getItems());
-                                return oldValue;
-                            }
-                        });
+
+                if (response == null) continue;
+
+                if (!response.ok()) {
+                    itemStackResponse.setResult(ItemStackResponseStatus.ERROR);
+                    itemStackResponse.getContainers().clear();
+
+                    responses.add(itemStackResponse);
+
+                    break;
+                }
+
+                for (ItemStackResponseContainer container : response.containers()) {
+                    ItemStackResponseContainer oldContainer = responseContainerMap.get(container.getContainer());
+                    if (oldContainer == null) {
+                        responseContainerMap.put(container.getContainer(), container);
+                    } else {
+                        oldContainer.getItems().addAll(container.getItems());
                     }
                 }
             }
+
             itemStackResponse.getContainers().addAll(responseContainerMap.values());
             responses.add(itemStackResponse);
         }
+
         var itemStackResponsePacket = new ItemStackResponsePacket();
         itemStackResponsePacket.entries.addAll(responses);
         player.dataPacket(itemStackResponsePacket);
