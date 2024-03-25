@@ -57,11 +57,10 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
             Map<ContainerSlotType, ItemStackResponseContainer> responseContainerMap = new LinkedHashMap<>();
             ItemStackRequestContext itemStackRequestContext = new ItemStackRequestContext(request);
 
-            ItemStackRequestAction[] itemStackRequestActions = request.getActions();
-            for (int index = 0; index < itemStackRequestActions.length; index++) {
-                itemStackRequestContext.setCurrentActionIndex(index);
+            int index = 0;
+            for (ItemStackRequestAction itemStackRequestAction : request.getActions()) {
+                itemStackRequestContext.setCurrentActionIndex(index++);
 
-                ItemStackRequestAction itemStackRequestAction = itemStackRequestActions[index];
                 ItemStackRequestActionProcessor<ItemStackRequestAction> processor = (ItemStackRequestActionProcessor<ItemStackRequestAction>) PROCESSORS.get(itemStackRequestAction.getType());
                 if (processor == null) {
                     log.warn("Unhandled inventory itemStackRequestAction type " + itemStackRequestAction.getType());
