@@ -51,7 +51,7 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
     @SuppressWarnings("unchecked")
     public void handle(@NotNull PlayerHandle playerHandle, @NotNull ItemStackRequestPacket pk) {
         Player player = playerHandle.player;
-        List<ItemStackResponse> responses = new ArrayList<>();
+        List<ItemStackResponse> itemStackResponses = new ArrayList<>();
         for (ItemStackRequest request : pk.getRequests()) {
             ItemStackResponse itemStackResponse = new ItemStackResponse(ItemStackResponseStatus.OK, request.getRequestId(), new ArrayList<>());
             Map<ContainerSlotType, ItemStackResponseContainer> responseContainerMap = new LinkedHashMap<>();
@@ -63,7 +63,7 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
 
                 ItemStackRequestActionProcessor<ItemStackRequestAction> processor = (ItemStackRequestActionProcessor<ItemStackRequestAction>) PROCESSORS.get(itemStackRequestAction.getType());
                 if (processor == null) {
-                    log.warn("Unhandled inventory itemStackRequestAction type " + itemStackRequestAction.getType());
+                    log.warn("Unhandled inventory itemStackRequestAction type {}", itemStackRequestAction.getType());
 
                     continue;
                 }
@@ -87,7 +87,7 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
                     itemStackResponse.setResult(ItemStackResponseStatus.ERROR);
                     itemStackResponse.getContainers().clear();
 
-                    responses.add(itemStackResponse);
+                    itemStackResponses.add(itemStackResponse);
 
                     break;
                 }
@@ -103,11 +103,11 @@ public class ItemStackRequestPacketProcessor extends DataPacketProcessor<ItemSta
             }
 
             itemStackResponse.getContainers().addAll(responseContainerMap.values());
-            responses.add(itemStackResponse);
+            itemStackResponses.add(itemStackResponse);
         }
 
         var itemStackResponsePacket = new ItemStackResponsePacket();
-        itemStackResponsePacket.entries.addAll(responses);
+        itemStackResponsePacket.entries.addAll(itemStackResponses);
         player.dataPacket(itemStackResponsePacket);
     }
 
